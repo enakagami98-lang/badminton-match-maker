@@ -580,10 +580,11 @@ function startGame() {
     games: {},
     pairHistory: {},
     opponentHistory: {},
+    lastPlayedMatchIndex: {}, // 各プレイヤーが最後に出た試合番号
     restHistory: [],
     viewingIndex: 0,
   };
-  for (let i = 1; i <= n; i++) { state.wins[i] = 0; state.games[i] = 0; }
+  for (let i = 1; i <= n; i++) { state.wins[i] = 0; state.games[i] = 0; state.lastPlayedMatchIndex[i] = -1; }
 
   generateNextMatch();
   save();
@@ -605,10 +606,16 @@ function generateNextMatch() {
   // Decide who rests
   let rest = [];
   if (restCount > 0) {
-    const lastRest = state.restHistory.length > 0 ? state.restHistory[state.restHistory.length - 1] : [];
-    const notLastRest = active.filter(p => !lastRest.includes(p));
-    const candidates = notLastRest.length >= restCount ? notLastRest : active;
-    rest = shuffle([...candidates]).slice(0, restCount);
+    // 1コート・8人以上 → 直前に出た人を強制休みにする厳格モード
+    if (maxCourts === 1 && active.length >= 8) {
+      rest = selectRestOneCourt(active, restCount);
+    } else {
+      // 複数コート → 従来ロジック（連続休みを避ける）
+      const lastRest = state.restHistory.length > 0 ? state.restHistory[state.restHistory.length - 1] : [];
+      const notLastRest = active.filter(p => !lastRest.includes(p));
+      const candidates = notLastRest.length >= restCount ? notLastRest : active;
+      rest = shuffle([...candidates]).slice(0, restCount);
+    }
   }
   state.restHistory.push(rest);
 
@@ -690,11 +697,69 @@ function getOpponentScore(back, front) {
   return score;
 }
 
+// ===== 1コート厳格休み選択 =====
+// 直前に出た人を強制休みにし、連続出場を防ぐ
+function selectRestOneCourt(active, restCount) {
+  if (state.matches.length === 0) {
+    // 初戦: 休み履歴なし → シャッフルで選ぶ
+    return shuffle([...active]).slice(0, restCount);
+  }
+
+  const lastMatch = state.matches[state.matches.length - 1];
+  // 直前の試合に出た全プレイヤー
+  const lastPlayed = [...new Set(lastMatch.courts.flatMap(c => [...c.back, ...c.front]))]
+    .filter(p => active.includes(p));
+  const canPlay = active.filter(p => !lastPlayed.includes(p));
+
+  if (canPlay.length >= 4) {
+    // ===== 厳格モード: lastPlayedは全員休み =====
+    const extraNeeded = restCount - lastPlayed.length;
+    let extra = [];
+    if (extraNeeded > 0) {
+      // canPlayの中から追加で休む人を選ぶ（前回休んだ人は除外優先）
+      const lastRested = state.restHistory.length > 0 ? state.restHistory[state.restHistory.length - 1] : [];
+      const notRestedLast = canPlay.filter(p => !lastRested.includes(p));
+      const restedLast    = canPlay.filter(p =>  lastRested.includes(p));
+      if (notRestedLast.length >= extraNeeded) {
+        extra = shuffle([...notRestedLast]).slice(0, extraNeeded);
+      } else {
+        extra = [...notRestedLast, ...shuffle([...restedLast]).slice(0, extraNeeded - notRestedLast.length)];
+      }
+    } else if (extraNeeded < 0) {
+      // lastPlayedが多すぎる（複数コートから1コートへの移行時など）
+      // 最近出た順に多く休ませる
+      const sorted = [...lastPlayed].sort((a, b) =>
+        (state.lastPlayedMatchIndex[b] ?? -1) - (state.lastPlayedMatchIndex[a] ?? -1)
+      );
+      return sorted.slice(0, restCount);
+    }
+    return [...lastPlayed, ...extra];
+  } else {
+    // ===== フォールバック: 人が足りず完全回避不可 =====
+    // canPlay全員を出場させ、lastPlayedから「最も長く休んでいた人」を優先して出場
+    const forcedPlay = 4 - canPlay.length;
+    const sortedLastPlayed = [...lastPlayed].sort((a, b) =>
+      (state.lastPlayedMatchIndex[a] ?? -1) - (state.lastPlayedMatchIndex[b] ?? -1) // 長く休んだ順
+    );
+    const forcedToPlay = sortedLastPlayed.slice(0, forcedPlay);
+    const mustRest     = sortedLastPlayed.slice(forcedPlay);
+    const needFromCanPlay = restCount - mustRest.length;
+    const extraRest = needFromCanPlay > 0 ? shuffle([...canPlay]).slice(0, needFromCanPlay) : [];
+    return [...mustRest, ...extraRest];
+  }
+}
+
 // ペア・対戦相手の履歴を記録
 function recordMatchHistory(courts) {
+  const matchIdx = state.matchIndex;
+  if (!state.lastPlayedMatchIndex) state.lastPlayedMatchIndex = {};
   courts.forEach(c => {
     incPair(c.back[0], c.back[1]);
     incPair(c.front[0], c.front[1]);
+    // 出場記録を更新
+    [...c.back, ...c.front].forEach(p => {
+      state.lastPlayedMatchIndex[p] = matchIdx;
+    });
     c.back.forEach(a => c.front.forEach(b => {
       const key = [a,b].sort((x,y)=>x-y).join('-');
       state.opponentHistory[key] = (state.opponentHistory[key] || 0) + 1;
@@ -977,6 +1042,7 @@ function addPlayers() {
     state.players.push({ id: newId, active: true });
     state.wins[newId] = 0;
     state.games[newId] = 0;
+    state.lastPlayedMatchIndex[newId] = -1;
   }
   openAdjust(); // refresh grid
 }
