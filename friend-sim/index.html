@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>それでも友達 〜面会室より〜</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; }
+  body {
+    font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans','Yu Gothic',Meiryo,sans-serif;
+    background:#1a1d2b; color:#2b2b33;
+    display:flex; justify-content:center;
+  }
+  #app { width:100%; max-width:560px; min-height:100vh; background:#f4f1ea; position:relative; overflow:hidden; }
+  .screen { display:none; }
+  .screen.active { display:block; }
+  button { font-family:inherit; cursor:pointer; }
+
+  /* ===== セットアップ画面 ===== */
+  #setup { padding:18px 16px 40px; }
+  .title { text-align:center; margin:6px 0 2px; font-size:26px; font-weight:800; color:#3a3f5c; letter-spacing:2px; }
+  .subtitle { text-align:center; font-size:12px; color:#8a8fa8; margin-bottom:14px; }
+  .card { background:#fff; border-radius:14px; padding:14px; margin-bottom:14px; box-shadow:0 2px 8px rgba(60,60,90,.08); }
+  .card h2 { font-size:14px; color:#5a5f7c; margin-bottom:10px; border-left:4px solid #7c88d8; padding-left:8px; }
+  .row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .row label { width:84px; font-size:13px; color:#666; flex-shrink:0; }
+  .row input[type=text], .row select {
+    flex:1; padding:8px 10px; border:1.5px solid #d8d5cc; border-radius:8px; font-size:15px; background:#fbfaf7; min-width:0;
+  }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .chip { border:1.5px solid #c8cbe0; background:#f2f3fa; color:#4a4f70; border-radius:999px; padding:5px 12px; font-size:13px; }
+  .chip.sel { background:#7c88d8; border-color:#7c88d8; color:#fff; }
+  #facePreviewWrap { display:flex; justify-content:center; margin-bottom:10px; }
+  #facePreview { width:180px; height:200px; background:linear-gradient(#e8ecf8,#f6f4ee); border-radius:12px; border:1.5px solid #dcdaf0; }
+  .partRow { display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+  .partRow .pname { width:64px; font-size:12px; color:#666; flex-shrink:0; }
+  .partRow .pval { flex:1; text-align:center; font-size:13px; color:#3a3f5c; background:#f4f3ee; border-radius:6px; padding:5px 0; }
+  .arrowBtn { width:36px; height:30px; border:none; border-radius:8px; background:#7c88d8; color:#fff; font-size:14px; font-weight:700; }
+  .arrowBtn:active { background:#5f6cc4; }
+  .swatches { display:flex; gap:6px; flex:1; flex-wrap:wrap; }
+  .sw { width:26px; height:26px; border-radius:50%; border:2px solid #fff; box-shadow:0 0 0 1.5px #ccc; }
+  .sw.sel { box-shadow:0 0 0 2.5px #7c88d8; }
+  .randomBtn { display:block; margin:8px auto 0; background:#f0b429; border:none; color:#5c4400; font-weight:700; padding:8px 20px; border-radius:999px; font-size:13px; }
+  #startBtn { display:block; width:100%; padding:15px; font-size:18px; font-weight:800; color:#fff;
+    background:linear-gradient(#8a95e8,#6a76d4); border:none; border-radius:14px; box-shadow:0 4px 0 #4c58b0; letter-spacing:3px; }
+  #startBtn:active { transform:translateY(3px); box-shadow:0 1px 0 #4c58b0; }
+  .hint { font-size:11.5px; color:#9a97a8; line-height:1.7; margin-top:10px; }
+
+  /* ===== ゲーム画面 ===== */
+  #game { height:100vh; height:100dvh; display:none; flex-direction:column; }
+  #game.active { display:flex; }
+  #hud { padding:8px 12px 6px; background:#2f3350; color:#fff; flex-shrink:0; }
+  #hudTop { display:flex; justify-content:space-between; align-items:center; font-size:13px; margin-bottom:6px; }
+  #phaseLabel { font-weight:700; color:#ffd97a; }
+  #turnLabel { color:#c8ccec; }
+  .meters { display:flex; gap:8px; }
+  .meter { flex:1; position:relative; }
+  .meter .mlabel { font-size:10.5px; color:#c8ccec; display:flex; justify-content:space-between; }
+  .meter .bar { height:9px; background:#1c1e33; border-radius:5px; overflow:hidden; margin-top:2px; }
+  .meter .fill { height:100%; border-radius:5px; transition:width .6s ease; }
+  #fillF .fill { background:linear-gradient(90deg,#ff8fa8,#ff5f82); }
+  #fillR .fill { background:linear-gradient(90deg,#7ddc9a,#3cb96a); }
+  #fillS .fill { background:linear-gradient(90deg,#ffd36a,#ffb02e); }
+  .deltaChip { position:absolute; right:0; top:-16px; font-size:11px; font-weight:800; padding:1px 6px; border-radius:8px;
+    opacity:0; animation:pop 1.4s ease forwards; pointer-events:none; white-space:nowrap; }
+  .deltaChip.up { background:#3cb96a; color:#fff; } .deltaChip.down { background:#e05a6a; color:#fff; }
+  @keyframes pop { 0%{opacity:0; transform:translateY(6px);} 15%{opacity:1; transform:translateY(0);} 75%{opacity:1;} 100%{opacity:0; transform:translateY(-8px);} }
+
+  #stage { flex:1; position:relative; overflow:hidden; min-height:220px; }
+  .scene { position:absolute; inset:0; transition:opacity .8s; }
+  #sceneJail { background:linear-gradient(#9aa2b8 0%,#b8becc 55%,#8e94a8 55.5%,#a8adbd 100%); }
+  #sceneJail::before { content:''; position:absolute; left:0; right:0; top:55%; height:10px; background:#767c92; }
+  #sceneJail .window { position:absolute; top:18px; right:26px; width:64px; height:52px; background:linear-gradient(#dfe6f4,#c2ccdf); border:4px solid #767c92; border-radius:4px; }
+  #sceneJail .window::before { content:''; position:absolute; inset:0; background:
+    linear-gradient(90deg,transparent 46%,#767c92 46%,#767c92 54%,transparent 54%),
+    linear-gradient(transparent 46%,#767c92 46%,#767c92 54%,transparent 54%); }
+  #sceneOut { background:linear-gradient(#8ec9f0 0%,#c9e6f8 52%,#9fd48a 52.5%,#b8e0a0 100%); opacity:0; }
+  #sceneOut .sun { position:absolute; top:20px; right:30px; width:52px; height:52px; border-radius:50%; background:#ffe27a; box-shadow:0 0 30px 10px rgba(255,226,122,.6); }
+  #charWrap { position:absolute; left:50%; bottom:-12px; transform:translateX(-50%); width:270px; }
+  #charWrap svg { width:100%; display:block; filter:drop-shadow(0 3px 5px rgba(40,40,70,.25)); }
+  #acryl { position:absolute; inset:0; pointer-events:none; transition:opacity .8s;
+    background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.22) 38%,rgba(255,255,255,.05) 46%,transparent 55%,rgba(255,255,255,.14) 78%,transparent 86%); }
+  #acryl::after { content:''; position:absolute; left:50%; transform:translateX(-50%); bottom:26%; width:120px; height:14px;
+    background:radial-gradient(circle 4px at 10px 7px,#5c6178 98%,transparent) 0 0/24px 14px repeat-x; opacity:.55; }
+
+  #dialogueArea { flex-shrink:0; background:#2f3350; padding:10px 12px 14px; min-height:186px; display:flex; flex-direction:column; }
+  #dbox { background:rgba(252,251,246,.97); border-radius:12px; padding:12px 14px 14px; position:relative; min-height:92px; flex-shrink:0; cursor:pointer; }
+  #dname { position:absolute; top:-12px; left:12px; background:#7c88d8; color:#fff; font-size:12px; font-weight:700; padding:3px 14px; border-radius:999px; }
+  #dname.you { background:#e8975a; }
+  #dname.hidden { display:none; }
+  #dtext { font-size:15px; line-height:1.75; color:#33323d; white-space:pre-wrap; }
+  #dtext.narr { color:#6a7090; font-style:italic; text-align:center; padding-top:8px; }
+  #dnext { position:absolute; right:12px; bottom:6px; color:#7c88d8; font-size:14px; animation:bob 1s infinite; display:none; }
+  @keyframes bob { 0%,100%{transform:translateY(0);} 50%{transform:translateY(4px);} }
+  #choices { margin-top:10px; display:flex; flex-direction:column; gap:7px; }
+  .choiceBtn { text-align:left; background:#fdfcf8; border:1.5px solid #b8bee4; border-radius:10px; padding:10px 12px;
+    font-size:14px; line-height:1.5; color:#3a3f5c; box-shadow:0 2px 0 #b8bee4;
+    opacity:0; transform:translateY(6px); animation:cin .3s ease forwards; }
+  .choiceBtn:active { background:#e8ebfa; transform:translateY(2px); box-shadow:none; }
+  .choiceBtn b { color:#6a76d4; margin-right:6px; }
+  @keyframes cin { to { opacity:1; transform:translateY(0);} }
+
+  /* ===== エンディング画面 ===== */
+  #ending { padding:24px 18px 40px; text-align:center; min-height:100vh;
+    background:linear-gradient(#2f3350,#4a4f78); color:#f0eee6; }
+  #endBadge { display:inline-block; font-size:13px; font-weight:800; letter-spacing:2px; padding:4px 18px; border-radius:999px; background:#ffd97a; color:#5c4400; margin-bottom:10px; }
+  #endTitle { font-size:24px; font-weight:800; margin-bottom:14px; letter-spacing:1px; }
+  #endFace { width:210px; height:230px; margin:0 auto 12px; background:rgba(255,255,255,.1); border-radius:16px; }
+  #endBody { font-size:14.5px; line-height:2; margin:0 auto 18px; max-width:420px; text-align:left; white-space:pre-wrap; background:rgba(0,0,0,.18); padding:14px 16px; border-radius:12px; }
+  #endStats { display:flex; gap:10px; justify-content:center; margin-bottom:22px; font-size:13px; }
+  #endStats span { background:rgba(255,255,255,.12); padding:6px 12px; border-radius:8px; }
+  .endBtn { display:block; width:80%; margin:0 auto 10px; padding:13px; font-size:15px; font-weight:700; border:none; border-radius:12px; }
+  #retryBtn { background:#8a95e8; color:#fff; box-shadow:0 3px 0 #5560b8; }
+  #resetBtn { background:transparent; color:#c8ccec; border:1.5px solid #8a8fb8; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ========== 設定画面 ========== -->
+  <div id="setup" class="screen active">
+    <h1 class="title">それでも友達</h1>
+    <div class="subtitle">〜 面会室より 〜　友情・反省・元気のバランス面会シミュレーション</div>
+
+    <div class="card">
+      <h2>1. 事件のあらすじ</h2>
+      <div class="row"><label>友達の名前</label><input type="text" id="inName" maxlength="10" placeholder="例：タカシ"></div>
+      <div class="row"><label>一人称</label>
+        <select id="inPronoun"><option>僕</option><option>俺</option><option>私</option><option>うち</option></select>
+      </div>
+      <div class="row"><label>あなたの呼び名</label><input type="text" id="inPlayer" maxlength="10" placeholder="例：ケン（空欄なら「キミ」）"></div>
+      <div class="row"><label>犯した罪</label><input type="text" id="inCrime" maxlength="20" placeholder="自由に入力できます"></div>
+      <div class="chips" id="crimeChips"></div>
+    </div>
+
+    <div class="card">
+      <h2>2. 友達の顔をつくる</h2>
+      <div id="facePreviewWrap"><div id="facePreview"></div></div>
+      <div id="partRows"></div>
+      <button class="randomBtn" id="randomFace">🎲 おまかせ</button>
+    </div>
+
+    <button id="startBtn">面会に行く</button>
+    <p class="hint">💡 遊びかた：捕まった友達と10回の面会をします。<b>励ますだけ</b>では反省せず、<b>叱ってばかり</b>だと心が折れ、<b>突き放す</b>と友情が壊れます。3つのゲージのバランスを取りながら、友達を立ち直らせましょう。<br>
+    ※会話と選択肢は、友達の状態に合わせてページ内の会話エンジンが自動生成します（通信・APIキー不要）。</p>
+  </div>
+
+  <!-- ========== ゲーム画面 ========== -->
+  <div id="game" class="screen">
+    <div id="hud">
+      <div id="hudTop"><span id="phaseLabel"></span><span id="turnLabel"></span></div>
+      <div class="meters">
+        <div class="meter" id="fillF"><div class="mlabel"><span>💗 友情</span><span class="mval"></span></div><div class="bar"><div class="fill"></div></div></div>
+        <div class="meter" id="fillR"><div class="mlabel"><span>🌱 反省</span><span class="mval"></span></div><div class="bar"><div class="fill"></div></div></div>
+        <div class="meter" id="fillS"><div class="mlabel"><span>☀️ 元気</span><span class="mval"></span></div><div class="bar"><div class="fill"></div></div></div>
+      </div>
+    </div>
+    <div id="stage">
+      <div class="scene" id="sceneJail"><div class="window"></div></div>
+      <div class="scene" id="sceneOut"><div class="sun"></div></div>
+      <div id="charWrap"></div>
+      <div id="acryl"></div>
+    </div>
+    <div id="dialogueArea">
+      <div id="dbox">
+        <div id="dname"></div>
+        <div id="dtext"></div>
+        <div id="dnext">▼</div>
+      </div>
+      <div id="choices"></div>
+    </div>
+  </div>
+
+  <!-- ========== エンディング画面 ========== -->
+  <div id="ending" class="screen">
+    <div id="endBadge"></div>
+    <div id="endTitle"></div>
+    <div id="endFace"></div>
+    <div id="endBody"></div>
+    <div id="endStats"></div>
+    <button class="endBtn" id="retryBtn">同じ友達でもう一度</button>
+    <button class="endBtn" id="resetBtn">最初から（顔を作り直す）</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* =====================================================
+   顔パーツ定義（SVG合成）
+===================================================== */
+const SKINS = [
+  {f:'#ffe3c9',s:'#e0a97e'},{f:'#ffd2a8',s:'#d9a06f'},{f:'#f0b98c',s:'#c98d5e'},
+  {f:'#c98d5e',s:'#a06a3f'},{f:'#8d5a3a',s:'#6b3f24'},{f:'#fff0df',s:'#e3bd9a'}
+];
+const HAIRCOLORS = ['#33302e','#5a4632','#8a5a2b','#c98a3d','#e8c96a','#9c9c9c','#b05555','#5a6ab0'];
+const INK = '#3a3330';
+
+const FACES = [
+  {n:'まる',   rx:62, el:'<ellipse cx="100" cy="128" rx="62" ry="64"/>'},
+  {n:'たまご', rx:57, el:'<ellipse cx="100" cy="128" rx="57" ry="68"/>'},
+  {n:'しかく', rx:58, el:'<rect x="42" y="64" width="116" height="126" rx="36"/>'},
+  {n:'ほっそり',rx:51, el:'<ellipse cx="100" cy="128" rx="51" ry="70"/>'},
+  {n:'ふっくら',rx:67, el:'<ellipse cx="100" cy="130" rx="67" ry="60"/>'}
+];
+
+const HAIRS = [
+  {n:'ショート', back:'',
+   front:'M38 110 Q32 44 100 42 Q168 44 162 110 Q152 84 132 90 Q136 70 106 80 Q104 64 78 82 Q66 74 64 96 Q50 88 38 110 Z'},
+  {n:'ツンツン', back:'',
+   front:'M38 110 C40 76 60 54 100 52 C140 54 160 76 162 110 L148 86 L142 108 L128 72 L118 102 L102 64 L92 100 L76 70 L68 102 L54 82 L48 108 Z'},
+  {n:'マッシュ', back:'',
+   front:'M36 118 Q30 42 100 40 Q170 42 164 118 Q158 98 146 98 Q148 78 126 86 Q124 70 100 72 Q76 70 74 86 Q52 78 54 98 Q42 98 36 118 Z'},
+  {n:'ロング', back:'M36 128 Q32 216 62 224 L138 224 Q168 216 164 128 Q164 52 100 48 Q36 52 36 128 Z',
+   front:'M38 110 Q32 44 100 42 Q168 44 162 110 Q152 84 132 90 Q136 70 106 80 Q104 64 78 82 Q66 74 64 96 Q50 88 38 110 Z'},
+  {n:'ポニーテール', back:'M148 60 Q192 70 180 132 Q174 168 152 184 Q164 142 156 112 Q150 84 138 70 Z',
+   front:'M38 110 Q32 44 100 42 Q168 44 162 110 Q152 84 132 90 Q136 70 106 80 Q104 64 78 82 Q66 74 64 96 Q50 88 38 110 Z'},
+  {n:'ツインテール',
+   back:'M50 96 Q14 110 20 192 Q22 214 36 218 Q30 168 44 132 Z M150 96 Q186 110 180 192 Q178 214 164 218 Q170 168 156 132 Z',
+   front:'M38 110 Q32 44 100 42 Q168 44 162 110 Q152 84 132 90 Q136 70 106 80 Q104 64 78 82 Q66 74 64 96 Q50 88 38 110 Z'},
+  {n:'ぼうず', back:'',
+   front:'M42 98 Q40 54 100 50 Q160 54 158 98 Q150 68 100 64 Q50 68 42 98 Z'},
+  {n:'アフロ', back:'<circle cx="100" cy="88" r="74"/>',
+   front:'M30 102 Q26 30 100 28 Q174 30 170 102 Q160 70 100 66 Q40 70 30 102 Z'},
+  {n:'なし', back:'', front:''}
+];
+
+const EYES = {
+  maru:  '<circle r="7" fill="'+INK+'"/><circle cx="-2.3" cy="-2.5" r="2.2" fill="#fff"/>',
+  tare:  '<g transform="rotate(10)"><ellipse rx="7" ry="5.5" fill="'+INK+'"/><circle cx="-2" cy="-2" r="1.8" fill="#fff"/></g>',
+  tsuri: '<g transform="rotate(-10)"><ellipse rx="7" ry="5.5" fill="'+INK+'"/><circle cx="-2" cy="-2" r="1.8" fill="#fff"/></g>',
+  jito:  '<path d="M-7 -1 Q0 -3 7 -1 L7 2 Q0 6 -7 2 Z" fill="'+INK+'"/><path d="M-8 -2 Q0 -4 8 -2" stroke="'+INK+'" stroke-width="1.8" fill="none"/>',
+  kuri:  '<ellipse rx="7.5" ry="9" fill="'+INK+'"/><circle cx="-2.5" cy="-3.5" r="2.6" fill="#fff"/><circle cx="2.5" cy="2.5" r="1.3" fill="#fff" opacity=".85"/>',
+  closedHappy:'<path d="M-8 1 Q0 -6 8 1" stroke="'+INK+'" stroke-width="2.6" fill="none" stroke-linecap="round"/>',
+  closedSad:  '<path d="M-8 -2 Q0 4 8 -2" stroke="'+INK+'" stroke-width="2.6" fill="none" stroke-linecap="round"/>',
+  squeeze:'<path d="M-6 -4 L5 0 L-6 4" stroke="'+INK+'" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  shock: '<circle r="6.5" fill="#fff" stroke="'+INK+'" stroke-width="2"/><circle r="2" fill="'+INK+'"/>'
+};
+const EYE_NAMES = [['maru','まる'],['tare','たれ目'],['tsuri','つり目'],['jito','ジト目'],['kuri','くりくり']];
+
+const BROWS = {
+  normal:{d:'M-9 2 Q0 -2 9 1', w:2.6}, bold:{d:'M-9 2 Q0 -2 9 1', w:4.6},
+  sharp:{d:'M-9 -1 L9 3', w:3}, soft:{d:'M-7 1 Q0 -1 7 1', w:2.2},
+  worried:{d:'M-9 3 Q0 0 9 -3', w:2.6}, angry:{d:'M-9 -4 L9 3', w:3}
+};
+const BROW_NAMES = [['normal','ふつう'],['bold','ふとめ'],['sharp','キリッ'],['soft','やわらか']];
+
+const NOSES = [
+  {n:'ちょん', el:s=>'<circle cx="100" cy="133" r="1.8" fill="'+s+'"/>'},
+  {n:'くのじ', el:s=>'<path d="M101 128 Q104 133 100 137" stroke="'+s+'" stroke-width="2" fill="none" stroke-linecap="round"/>'},
+  {n:'さんかく', el:s=>'<path d="M100 129 L103.5 136 L96.5 136 Z" fill="'+s+'" opacity=".85"/>'},
+  {n:'すっと', el:s=>'<path d="M100 128 L100 136" stroke="'+s+'" stroke-width="2" fill="none" stroke-linecap="round"/>'}
+];
+
+const MOUTHS = {
+  nikkori:'<path d="M-10 -2 Q0 5 10 -2" class="mst"/>',
+  omega:  '<path d="M-9 0 Q-4.5 5 0 0 Q4.5 5 9 0" class="mst"/>',
+  line:   '<path d="M-8 0 L8 0" class="mst"/>',
+  small:  '<path d="M-4 -1 Q0 2 4 -1" class="mst"/>',
+  bigsmile:'<path d="M-11 -1 Q0 13 11 -1 Q0 3 -11 -1 Z" fill="'+INK+'"/><path d="M-5 5 Q0 8 5 5 Q0 11 -5 5 Z" fill="#e88" />',
+  sad:    '<path d="M-9 3 Q0 -3 9 3" class="mst"/>',
+  wavy:   '<path d="M-9 1 Q-4.5 -2 0 1 Q4.5 4 9 1" class="mst"/>',
+  openO:  '<ellipse rx="4.5" ry="6" fill="'+INK+'"/>',
+  smileSoft:'<path d="M-6 -1 Q0 3 6 -1" class="mst"/>'
+};
+const MOUTH_NAMES = [['nikkori','にっこり'],['omega','ω'],['line','まっすぐ'],['small','ちいさめ']];
+
+const GLASSES = [
+  {n:'なし', el:''},
+  {n:'しかく', el:'<g stroke="#454a5c" fill="rgba(255,255,255,.15)" stroke-width="2.4"><rect x="58" y="106" width="28" height="20" rx="5"/><rect x="114" y="106" width="28" height="20" rx="5"/><line x1="86" y1="113" x2="114" y2="113"/></g>'},
+  {n:'まる', el:'<g stroke="#454a5c" fill="rgba(255,255,255,.15)" stroke-width="2.4"><circle cx="72" cy="116" r="13"/><circle cx="128" cy="116" r="13"/><line x1="85" y1="114" x2="115" y2="114"/></g>'}
+];
+const EXTRAS = [
+  {n:'なし', el:s=>''},
+  {n:'ヒゲ', el:s=>'<path d="M86 142 Q100 135 114 142 Q108 148 100 145 Q92 148 86 142 Z" fill="'+INK+'"/>'},
+  {n:'ほくろ', el:s=>'<circle cx="127" cy="145" r="1.8" fill="'+INK+'"/>'},
+  {n:'そばかす', el:s=>{let d='';[[64,138],[71,142],[78,138],[122,138],[129,142],[136,138]].forEach(p=>{d+='<circle cx="'+p[0]+'" cy="'+p[1]+'" r="1.4" fill="'+s+'" opacity=".7"/>';});return d;}},
+  {n:'ばんそうこう', el:s=>'<g transform="rotate(-14 66 140)"><rect x="55" y="135" width="23" height="9" rx="3.5" fill="#efe0b8" stroke="#cbb684" stroke-width="1.2"/><rect x="63" y="135" width="7" height="9" fill="#e3d2a2"/></g>'}
+];
+
+/* 表情：目・眉・口の上書き＋エフェクト */
+const EXPR = {
+  neutral:{},
+  smile:  {mouth:'smileSoft', fx:['blush']},
+  happy:  {eye:'closedHappy', mouth:'bigsmile', fx:['blush']},
+  sad:    {brow:'worried', mouth:'sad'},
+  gloomy: {brow:'worried', eye:'jito', mouth:'line', fx:['gloom']},
+  cry:    {eye:'squeeze', brow:'worried', mouth:'wavy', fx:['tears']},
+  moved:  {eye:'closedHappy', brow:'worried', mouth:'wavy', fx:['tears','blush']},
+  worried:{brow:'worried', mouth:'wavy', fx:['sweat']},
+  sheepish:{eye:'closedHappy', brow:'worried', mouth:'smileSoft', fx:['sweat']},
+  shocked:{eye:'shock', mouth:'openO', fx:['sweat']},
+  hurt:   {brow:'worried', eye:'closedSad', mouth:'sad', fx:['gloom']},
+  determined:{brow:'angry', mouth:'smileSoft'}
+};
+
+const FX = {
+  tears:'<g fill="#7fc4f0" opacity=".9"><path d="M70 128 q4 8 0 11 q-4 -3 0 -11"/><path d="M130 128 q4 8 0 11 q-4 -3 0 -11"/></g>',
+  sweat:'<path d="M152 88 q6 10 0 14 q-6 -4 0 -14" fill="#9fd4f0"/>',
+  blush:'<g fill="#ff9d9d" opacity=".5"><ellipse cx="74" cy="139" rx="9" ry="4.5"/><ellipse cx="126" cy="139" rx="9" ry="4.5"/></g>',
+  gloom:'<g stroke="#6b7bb0" stroke-width="2" stroke-linecap="round" opacity=".8"><line x1="58" y1="72" x2="56" y2="86"/><line x1="66" y1="70" x2="64" y2="84"/><line x1="74" y1="69" x2="72" y2="83"/></g>'
+};
+
+/* 顔設定 → SVG文字列 */
+function faceSVG(cfg, exprName){
+  const skin = SKINS[cfg.skin], hc = HAIRCOLORS[cfg.hairColor];
+  const face = FACES[cfg.face], hair = HAIRS[cfg.hair];
+  const ex = EXPR[exprName] || {};
+  const eyeStyle = ex.eye || EYE_NAMES[cfg.eye][0];
+  const browStyle = ex.brow || BROW_NAMES[cfg.brow][0];
+  const mouthStyle = ex.mouth || MOUTH_NAMES[cfg.mouth][0];
+  const brow = BROWS[browStyle];
+  let s = '<svg viewBox="0 0 200 230" xmlns="http://www.w3.org/2000/svg">';
+  s += '<style>.mst{stroke:'+INK+';stroke-width:2.4;fill:none;stroke-linecap:round}</style>';
+  // 後ろ髪
+  if(hair.back) s += hair.back.startsWith('<') ? hair.back.replace('<circle','<circle fill="'+hc+'"')
+                                               : '<path d="'+hair.back+'" fill="'+hc+'"/>';
+  // 耳・輪郭
+  s += '<g fill="'+skin.f+'" stroke="'+skin.s+'" stroke-width="2.5">';
+  s += '<circle cx="'+(100-face.rx)+'" cy="130" r="10"/><circle cx="'+(100+face.rx)+'" cy="130" r="10"/>';
+  s += face.el.replace('/>',' />');
+  s += '</g>';
+  // 眉・目
+  for(const side of [1,-1]){
+    const x = 100 - side*28;
+    s += '<g transform="translate('+x+' 100) scale('+side+' 1)"><path d="'+brow.d+'" stroke="'+INK+'" stroke-width="'+brow.w+'" fill="none" stroke-linecap="round"/></g>';
+    s += '<g transform="translate('+x+' 116) scale('+side+' 1)">'+EYES[eyeStyle]+'</g>';
+  }
+  // 鼻・口
+  s += NOSES[cfg.nose].el(skin.s);
+  s += '<g transform="translate(100 152)">'+MOUTHS[mouthStyle]+'</g>';
+  // そのほか・前髪・メガネ・エフェクト
+  s += EXTRAS[cfg.extra].el(skin.s);
+  if(hair.front) s += '<path d="'+hair.front+'" fill="'+hc+'"/>';
+  s += GLASSES[cfg.glasses].el;
+  (ex.fx||[]).forEach(f=>{ s += FX[f]; });
+  s += '</svg>';
+  return s;
+}
+
+/* =====================================================
+   顔メーカーUI
+===================================================== */
+const $ = id => document.getElementById(id);
+const R = n => Math.floor(Math.random()*n);
+const pick = a => a[R(a.length)];
+
+let cfg = { face:0, skin:0, hair:0, hairColor:0, eye:0, brow:0, nose:0, mouth:0, glasses:0, extra:0 };
+try { const saved = JSON.parse(localStorage.getItem('friendsim-cfg')); if(saved && typeof saved.face==='number') cfg = saved; } catch(e){}
+
+const PARTS = [
+  {key:'face',   label:'輪郭',   names:FACES.map(f=>f.n)},
+  {key:'skin',   label:'肌の色', swatches:SKINS.map(s=>s.f)},
+  {key:'hair',   label:'髪型',   names:HAIRS.map(h=>h.n)},
+  {key:'hairColor', label:'髪の色', swatches:HAIRCOLORS},
+  {key:'eye',    label:'目',     names:EYE_NAMES.map(e=>e[1])},
+  {key:'brow',   label:'まゆ',   names:BROW_NAMES.map(e=>e[1])},
+  {key:'nose',   label:'鼻',     names:NOSES.map(n=>n.n)},
+  {key:'mouth',  label:'口',     names:MOUTH_NAMES.map(m=>m[1])},
+  {key:'glasses',label:'メガネ', names:GLASSES.map(g=>g.n)},
+  {key:'extra',  label:'そのほか', names:EXTRAS.map(x=>x.n)}
+];
+
+function buildPartRows(){
+  const wrap = $('partRows'); wrap.innerHTML='';
+  PARTS.forEach(p=>{
+    const row = document.createElement('div'); row.className='partRow';
+    if(p.swatches){
+      let html = '<span class="pname">'+p.label+'</span><span class="swatches">';
+      p.swatches.forEach((c,i)=>{ html += '<button class="sw" data-k="'+p.key+'" data-i="'+i+'" style="background:'+c+'"></button>'; });
+      row.innerHTML = html + '</span>';
+    } else {
+      row.innerHTML = '<span class="pname">'+p.label+'</span>'
+        +'<button class="arrowBtn" data-k="'+p.key+'" data-d="-1">◀</button>'
+        +'<span class="pval" id="pv-'+p.key+'"></span>'
+        +'<button class="arrowBtn" data-k="'+p.key+'" data-d="1">▶</button>';
+    }
+    wrap.appendChild(row);
+  });
+  wrap.addEventListener('click', e=>{
+    const b = e.target.closest('button'); if(!b) return;
+    const k = b.dataset.k;
+    const part = PARTS.find(p=>p.key===k);
+    if(b.classList.contains('sw')) cfg[k] = +b.dataset.i;
+    else {
+      const n = part.names.length;
+      cfg[k] = (cfg[k] + (+b.dataset.d) + n) % n;
+    }
+    refreshBuilder();
+  });
+}
+function refreshBuilder(){
+  PARTS.forEach(p=>{
+    if(p.swatches){
+      document.querySelectorAll('.sw[data-k="'+p.key+'"]').forEach((el,i)=>el.classList.toggle('sel', i===cfg[p.key]));
+    } else $('pv-'+p.key).textContent = p.names[cfg[p.key]];
+  });
+  $('facePreview').innerHTML = faceSVG(cfg,'neutral');
+  localStorage.setItem('friendsim-cfg', JSON.stringify(cfg));
+}
+$('randomFace').addEventListener('click', ()=>{
+  PARTS.forEach(p=>{ cfg[p.key] = R(p.swatches ? p.swatches.length : p.names.length); });
+  refreshBuilder();
+});
+
+/* 罪のプリセット */
+const CRIMES = ['万引き','無銭飲食','自転車泥棒','落書き','花壇荒らし','無免許の屋台営業'];
+CRIMES.forEach(c=>{
+  const b=document.createElement('button'); b.className='chip'; b.textContent=c;
+  b.addEventListener('click',()=>{ $('inCrime').value=c; document.querySelectorAll('.chip').forEach(x=>x.classList.toggle('sel',x===b)); });
+  $('crimeChips').appendChild(b);
+});
+
+buildPartRows(); refreshBuilder();
+
+/* =====================================================
+   会話エンジン（内蔵ミニAI：状態×フェーズでセリフと選択肢を自動生成）
+===================================================== */
+let G = null; // ゲーム状態
+
+function t(str){ // テンプレート展開
+  return str.replaceAll('{name}',G.name).replaceAll('{p}',G.player)
+            .replaceAll('{crime}',G.crime).replaceAll('{i}',G.i);
+}
+
+const PHASES = [null,'A','A','B','B','C','C','D','E','E','E'];
+const PHASE_LABEL = {A:'逮捕直後',B:'留置場での日々',C:'裁判を前に',D:'判決の日',E:'釈放後'};
+
+/* 友達からの話しかけ（フェーズ×元気度で自動選択） */
+const OPEN = {
+  A:{ low:[
+      '…{p}、来てくれたんだ。ごめん…{crime}なんてして、本当にごめん…。',
+      '顔、見せられないよ…。まさか自分が捕まるなんて、思ってなかった…。'
+    ], mid:[
+      '{p}…！来てくれたんだ。…その、{crime}のこと、もう聞いたよね…。',
+      'ここ、思ったより狭いんだ。…なんて、冗談言ってる場合じゃないよね。'
+    ], high:[
+      'よっ、{p}！いやー、まいったまいった。まさか{crime}くらいで捕まるとはねぇ。',
+      'おっ、{p}じゃん！差し入れある？…って、そんな顔しないでよ。'
+    ]},
+  B:{ low:[
+      '夜、眠れないんだ。{crime}した瞬間のことを、何度も夢に見る…。',
+      '親にすごく迷惑かけた…。{p}にも、こんなところまで来させて…。'
+    ], mid:[
+      'ここの生活にも少し慣れてきたよ。…慣れちゃダメなんだろうけどさ。',
+      '昨日、取り調べで{crime}のこと全部話したんだ。話したら、少しだけ楽になった。'
+    ], high:[
+      '聞いて{p}！隣の部屋のおじさんと仲良くなったんだ。…って、喜ぶところじゃないか。',
+      'ここのごはん、意外とおいしいんだよね。…あ、いや、反省はしてるよ？ほんとだよ？'
+    ]},
+  C:{ low:[
+      'もうすぐ裁判なんだ…。怖いよ。{crime}って、どれくらい重い罪なのかな…。',
+      'もし前科がついたら…{p}は、もう友達でいてくれないのかな…。'
+    ], mid:[
+      '弁護士さんと話したよ。「ちゃんと反省の気持ちを伝えなさい」って言われた。',
+      '裁判の日が決まったんだ。正直、今から足が震えてる。'
+    ], high:[
+      '裁判かぁ。ドラマでしか見たことないや。…笑いごとじゃないんだけどさ。',
+      '「異議あり！」…って言ってみたかっただけ。ごめん、緊張をごまかしてるんだ。'
+    ]},
+  E:{ low:[
+      '外の空気…まぶしいなぁ。でも、みんな{i}のこと「{crime}したやつ」って見てる気がして…。',
+      '仕事、探してるんだけどさ。事情を話すと、なかなかうまくいかないんだ…。'
+    ], mid:[
+      '今日から心機一転！…って言いたいけど、正直まだちょっと不安だよ。',
+      '迷惑をかけた人に、ちゃんと謝りに行こうと思うんだ。…どう思う？'
+    ], high:[
+      '見てよこの空！自由って最高だね！もう二度と{crime}なんてしないよ。',
+      '{p}、毎回会いに来てくれてありがとう。次は{i}が{p}に何かできる番だね。'
+    ]}
+};
+const OPEN_EXPR = { low:['sad','gloomy','worried'], mid:['worried','neutral','neutral'], high:['smile','happy','sheepish'] };
+
+/* 選択肢プール（タグ＝会話の方向性。状況に応じて自動で組み合わせる） */
+const CHOICES = {
+  enc:{ any:[
+      '大丈夫、やり直せるよ。','{name}なら、きっと立ち直れるって信じてる。',
+      '元気出して。ほら、ちゃんと顔見せて？','終わったことより、これからの話をしようよ。',
+      '{name}のいいところ、いっぱい知ってるんだから。','こんなことで{name}の人生は終わらないよ。'
+    ], C:['裁判、ちゃんと見守ってるから。ひとりじゃないよ。'],
+       E:['焦らなくていいよ。一歩ずつ、ね。','新しいスタートだね。応援してる！'] },
+  sco:{ any:[
+      'でもね、{crime}はやっぱりダメだよ。','被害にあった人の気持ち、ちゃんと考えた？',
+      'なんで{crime}なんてしたのか、自分の口で説明してみて。','反省してるなら、言葉じゃなくて態度で示さないと。',
+      '同じことを{name}がされたら、どう思う？'
+    ], C:['裁判では言い訳しないで、正直に話しなよ。'],
+       E:['もう二度としないって、ここで約束できる？','謝るべき人に、ちゃんと謝った？'] },
+  emp:{ any:[
+      'つらかったね。話、全部聞くよ。','どんな{name}でも友達だから、ここに来たんだよ。',
+      'ひとりで抱えこまないで。一緒に考えよう。','いま、いちばん不安なことは何？',
+      '{name}が話したくなるまで、ここで待ってるよ。'
+    ], E:['不安になったら、いつでも連絡してきなよ。'] },
+  jok:{ any:[
+      '留置場グルメリポーターにでもなる気？','次に会うときは、ガラス越しじゃないといいなぁ。',
+      '{crime}界のレジェンドになっちゃったね…って、冗談だよ！','脱獄映画の見すぎには注意しなよ？',
+      '出てきたら、罰として一週間ぶんのジュースおごりね。'
+    ]},
+  tou:{ any:[
+      '正直、今回のことはかばえないよ。','甘えないで。自分でまいた種でしょ。',
+      '本気で変わる気がないなら、もう面会には来ないから。','その言い方、まだ他人事だと思ってるでしょ。'
+    ]},
+  pra:{ any:[
+      '差し入れ持ってきたよ。お菓子はダメだったから、本ね。','いい弁護士さん、一緒に探そうか。',
+      'ご家族には、こっちから様子を伝えておくね。'
+    ], E:['仕事探し、手伝うよ。今度、履歴書見せて。','今度うちでごはん食べよう。歓迎会だ！'] }
+};
+const TAG_ICON = { enc:'📣', sco:'⚡', emp:'🤝', jok:'🃏', tou:'🧊', pra:'🎁' };
+
+/* 反応生成：タグ×状態でセリフ・表情・ゲージ変化を決める */
+function react(tag){
+  const {F,Rf,S} = G, v = n => n + R(5) - 2; // ±2のゆらぎ
+  if(tag==='enc'){
+    if(G.cnt.enc>=3 && Rf<40) return {x:'sheepish', d:{S:v(8),Rf:-6},
+      t:'だよね！{i}は運が悪かっただけだよね！{p}もそう思うでしょ？…え、違う？'};
+    if(S<30) return {x:'moved', d:{S:v(12),F:v(4)},
+      t:'…うん。…ありがとう。{p}にそう言ってもらえると、少しだけ前を向ける気がするよ。'};
+    return {x:'happy', d:{S:v(10),F:v(4)},
+      t:'えへへ…ありがとう。{p}が来てくれるだけで、元気が出るよ。'};
+  }
+  if(tag==='sco'){
+    if(S<25) return {x:'cry', d:{Rf:v(10),S:-10,F:-6},
+      t:'うっ…そう、だよね…。ごめん…ごめんね…。'};
+    if(Rf>=70) return {x:'sad', d:{Rf:2,S:-6,F:-4},
+      t:'わかってる…わかってるよ。もう何度も、自分で自分を責めたんだ…。'};
+    if(S>65 && Rf<40) return {x:'sheepish', d:{Rf:v(12),S:-6},
+      t:'はい…。{p}は真面目だなぁ。…でも、その通りだね。ごめん。'};
+    return {x:'sad', d:{Rf:v(14),S:-4,F:2},
+      t:'…そうだよね。{crime}なんて、本当にバカなことをした。ちゃんと向き合うよ。'};
+  }
+  if(tag==='tou'){
+    if(F<35) return {x:'hurt', d:{Rf:v(6),F:-12,S:-10},
+      t:'…っ。{p}まで、そんなこと言うんだ…。'};
+    return {x:'determined', d:{Rf:v(18),F:-6,S:-8},
+      t:'…厳しいね。でも、{p}が本気で言ってくれてるのは、わかるよ。'};
+  }
+  if(tag==='emp'){
+    if(S<30) return {x:'cry', d:{F:v(12),S:v(8)},
+      t:'{p}…。ありがとう…。実はずっと、誰かにそう言ってほしかったんだ…。'};
+    return {x:'smile', d:{F:v(10),S:v(5)},
+      t:'…{p}は優しいね。{i}、友達に恵まれたよ。'};
+  }
+  if(tag==='jok'){
+    if(Rf>=60 || (G.phase==='C' && R(10)<4)) return {x:'sad', d:{S:-4,F:-5},
+      t:'…ごめん。今はちょっと、笑えないや…。'};
+    if(S<30) return {x:'smile', d:{S:v(15),F:v(5),Rf:-3},
+      t:'…ふふっ、なにそれ。…あー、久しぶりに笑った気がするよ。'};
+    return {x:'happy', d:{S:v(12),F:v(4),Rf:-6},
+      t:'あはは！{p}、それここで言う！？…でも、ちょっと救われた。'};
+  }
+  // pra
+  return {x:'moved', d:{F:v(8),S:v(8),Rf:2},
+    t:'…！ありがとう、本当に助かるよ…。{p}には頭が上がらないなぁ。'};
+}
+
+/* =====================================================
+   ゲーム進行
+===================================================== */
+const dname=$('dname'), dtext=$('dtext'), dnext=$('dnext'), choicesEl=$('choices');
+let queue=[], onQueueDone=null, typing=false, typeTimer=null, curFull='';
+
+function setExpr(x){ $('charWrap').innerHTML = faceSVG(cfg, x||'neutral'); }
+function setScene(out){
+  $('sceneOut').style.opacity = out?1:0;
+  $('sceneJail').style.opacity = out?0:1;
+  $('acryl').style.opacity = out?0:1;
+}
+function showMsg(m){
+  dnext.style.display='none';
+  dtext.classList.toggle('narr', m.who==='sys');
+  if(m.who==='sys'){ dname.classList.add('hidden'); }
+  else {
+    dname.classList.remove('hidden');
+    dname.classList.toggle('you', m.who==='you');
+    dname.textContent = m.who==='you' ? G.player : G.name;
+  }
+  if(m.expr) setExpr(m.expr);
+  curFull = t(m.text); dtext.textContent=''; typing=true;
+  let i=0;
+  typeTimer = setInterval(()=>{
+    i++; dtext.textContent = curFull.slice(0,i);
+    if(i>=curFull.length) finishType();
+  }, 30);
+}
+function finishType(){
+  clearInterval(typeTimer); typing=false; dtext.textContent=curFull;
+  if(queue.length) dnext.style.display='block';
+  else if(onQueueDone){ const f=onQueueDone; onQueueDone=null; setTimeout(f,150); }
+}
+function advance(){
+  if(typing){ finishType(); return; }
+  if(queue.length) showMsg(queue.shift());
+}
+function say(msgs, then){ queue=msgs.slice(); onQueueDone=then||null; advance(); }
+$('dbox').addEventListener('click', advance);
+
+function updateHUD(deltas){
+  $('phaseLabel').textContent = PHASE_LABEL[G.phase];
+  $('turnLabel').textContent = '面会 '+G.turn+' / 10';
+  const map = {F:['fillF',G.F], R:['fillR',G.Rf], S:['fillS',G.S]};
+  for(const k in map){
+    const el = $(map[k][0]);
+    el.querySelector('.fill').style.width = map[k][1]+'%';
+    el.querySelector('.mval').textContent = map[k][1];
+    if(deltas && deltas[k]){
+      const c=document.createElement('span');
+      c.className='deltaChip '+(deltas[k]>0?'up':'down');
+      c.textContent=(deltas[k]>0?'+':'')+deltas[k];
+      el.appendChild(c); setTimeout(()=>c.remove(),1500);
+    }
+  }
+}
+function applyDelta(d){
+  const dd={};
+  if(d.F){ dd.F=d.F; G.F=Math.max(0,Math.min(100,G.F+d.F)); }
+  if(d.Rf){ dd.R=d.Rf; G.Rf=Math.max(0,Math.min(100,G.Rf+d.Rf)); }
+  if(d.S){ dd.S=d.S; G.S=Math.max(0,Math.min(100,G.S+d.S)); }
+  updateHUD(dd);
+}
+
+function startGame(){
+  const name = $('inName').value.trim() || 'タカシ';
+  const player = $('inPlayer').value.trim() || 'キミ';
+  const crime = $('inCrime').value.trim() || '万引き';
+  G = { name, player, crime, i:$('inPronoun').value,
+        turn:1, phase:'A', F:60, Rf:15, S:40,
+        cnt:{enc:0,sco:0,emp:0,jok:0,tou:0,pra:0}, used:new Set() };
+  $('setup').classList.remove('active');
+  $('ending').classList.remove('active');
+  $('game').classList.add('active');
+  choicesEl.innerHTML='';
+  setScene(false); setExpr('sad'); updateHUD();
+  say([{who:'sys', text:'あなたの友達・{name}が「{crime}」の疑いで捕まってしまった。\n今日は、最初の面会の日──。'}], turnStart);
+}
+
+function spiritBucket(){ return G.S<35?'low':(G.S>65?'high':'mid'); }
+
+function turnStart(){
+  const prevPhase = G.phase;
+  G.phase = PHASES[G.turn];
+  updateHUD();
+  const msgs=[];
+  if(G.phase!==prevPhase){
+    const narr = {B:'―― 数日後。{name}の留置場での生活が続いている ――',
+                  C:'―― さらに数日後。裁判の日が近づいてきた ――',
+                  D:'―― そして、判決の日 ――',
+                  E:'―― {name}は釈放された。今日は久しぶりに、外で会う ――'}[G.phase];
+    if(narr) msgs.push({who:'sys', text:narr});
+    if(G.phase==='E') setScene(true);
+  }
+  if(G.phase==='D'){
+    if(G.Rf>=50) msgs.push({who:'friend', expr:'moved',
+      text:'判決、出たよ。反省の気持ちが伝わったみたいで、思ったよりずっと軽く済んだんだ。…{p}のおかげだよ。'});
+    else msgs.push({who:'friend', expr:'cry',
+      text:'判決…思ったより厳しかった…。「反省の色が見えない」って言われちゃったよ…。'});
+  } else {
+    const b = spiritBucket();
+    msgs.push({who:'friend', expr:pick(OPEN_EXPR[b]), text:pick(OPEN[G.phase][b])});
+  }
+  say(msgs, showChoices);
+}
+
+function pickChoice(tag){
+  const pool = (CHOICES[tag].any||[]).concat(CHOICES[tag][G.phase]||[]);
+  let cand = pool.filter(c=>!G.used.has(c));
+  if(!cand.length){ pool.forEach(c=>G.used.delete(c)); cand=pool; }
+  const c = pick(cand); G.used.add(c);
+  return {tag, text:c};
+}
+function showChoices(){
+  const list = [ pickChoice('enc'),
+                 pickChoice(R(10)<7 ? 'sco' : 'tou'),
+                 pickChoice('emp') ];
+  if(R(10)<6) list.push(pickChoice(pick(['jok','pra'])));
+  // 表示順をシャッフル
+  for(let i=list.length-1;i>0;i--){ const j=R(i+1); [list[i],list[j]]=[list[j],list[i]]; }
+  choicesEl.innerHTML='';
+  list.forEach((c,idx)=>{
+    const b=document.createElement('button');
+    b.className='choiceBtn'; b.style.animationDelay=(idx*0.08)+'s';
+    b.innerHTML='<b>'+TAG_ICON[c.tag]+'</b>'+t(c.text);
+    b.addEventListener('click',()=>choose(c));
+    choicesEl.appendChild(b);
+  });
+}
+
+function choose(c){
+  choicesEl.innerHTML='';
+  G.cnt[c.tag]++;
+  const r = react(c.tag);
+  say([{who:'you', text:c.text}], ()=>{
+    applyDelta(r.d);
+    say([{who:'friend', expr:r.x, text:r.t}], ()=>{
+      // 即バッドエンド判定
+      if(G.F<=5) return showEnding('zetsuen');
+      if(G.S<=3) return showEnding('kokoro');
+      if(G.turn>=10) return showEnding(judgeEnding());
+      G.turn++;
+      turnStart();
+    });
+  });
+}
+
+/* =====================================================
+   エンディング
+===================================================== */
+const ENDINGS = {
+  zetsuen:{ badge:'BAD END', title:'絶縁', rank:'D', expr:'cry',
+    body:'「…もう、来ないで。{p}の顔を見てると、余計につらいんだ…」\n\nそれが、{name}から聞いた最後の言葉になった。\n正しい言葉も、届け方を間違えれば刃になる。'},
+  kokoro:{ badge:'BAD END', title:'閉ざされた心', rank:'D', expr:'gloomy',
+    body:'「……」\n\n{name}は、もう顔を上げなかった。\n正しさだけでは、人は立ち直れない。ときには励まし、笑わせることも忘れずに。'},
+  shin:{ badge:'TRUE END', title:'一生の親友', rank:'S', expr:'happy',
+    body:'「{p}。{i}、もう二度と{crime}なんてしない。ぜんぶ{p}のおかげだ。…これからも、友達でいてくれる？」\n\n──当たり前だよ。\n\n{name}はしっかり反省し、心も元気を取り戻した。そして二人の友情は、前よりずっと深くなった。'},
+  kousei:{ badge:'GOOD END', title:'新しい一歩', rank:'A', expr:'determined',
+    body:'「{i}、ちゃんとやり直すよ。見ててね、{p}」\n\n{name}は自分の罪と向き合い、新しい生活を歩みはじめた。\nその一歩を、あなたはこれからも隣で見守っていく。'},
+  tooku:{ badge:'END', title:'更生、そして少しの距離', rank:'B', expr:'smile',
+    body:'{name}は{crime}のことを深く反省し、立派に更生した。\n\nでも、面会室で交わした厳しい言葉の数々は、二人の間に小さな距離を残した。\n「…元気でね、{p}」──その笑顔は、少しだけ遠かった。'},
+  amayakashi:{ badge:'END', title:'甘やかしすぎ！？', rank:'C', expr:'sheepish',
+    body:'「{p}はほんっと優しいなぁ！ …ところでさ、今度は絶対にバレない{crime}の方法を思いついたんだけど──」\n\n──おい。\n\n友情は深まったが、反省はどこかへ行ってしまったようだ。励ますだけでなく、ダメなことはダメと言う勇気も必要らしい。'},
+  saihan:{ badge:'BAD END', title:'再犯', rank:'D', expr:'shocked',
+    body:'数ヶ月後──あなたの電話が鳴った。\n\n「もしもし{p}…？ あのさ…また、やっちゃった…」\n\n反省も友情も中途半端なまま、{name}はまた同じ過ちを繰り返してしまった。'},
+  futsu:{ badge:'END', title:'まあまあの再出発', rank:'B', expr:'smile',
+    body:'{name}はなんとか日常に戻り、少しずつ前を向きはじめた。\n完璧とは言えないけれど、それでも面会に通い続けたあなたの時間は、確かに{name}を支えていた。'}
+};
+function judgeEnding(){
+  const {F,Rf,S} = G;
+  if(Rf>=60 && F>=65 && S>=55) return 'shin';
+  if(Rf>=60 && F>=50) return 'kousei';
+  if(Rf>=60) return 'tooku';
+  if(Rf<30 && F<50) return 'saihan';
+  if(Rf<40 && F>=60) return 'amayakashi';
+  return 'futsu';
+}
+function showEnding(key){
+  const e = ENDINGS[key];
+  $('game').classList.remove('active');
+  $('ending').classList.add('active');
+  $('endBadge').textContent = e.badge + '　RANK ' + e.rank;
+  $('endTitle').textContent = e.title;
+  $('endFace').innerHTML = faceSVG(cfg, e.expr);
+  $('endBody').textContent = t(e.body);
+  $('endStats').innerHTML = '<span>💗 友情 '+G.F+'</span><span>🌱 反省 '+G.Rf+'</span><span>☀️ 元気 '+G.S+'</span>';
+  window.scrollTo(0,0);
+}
+
+$('startBtn').addEventListener('click', startGame);
+$('retryBtn').addEventListener('click', startGame);
+$('resetBtn').addEventListener('click', ()=>{
+  $('ending').classList.remove('active');
+  $('setup').classList.add('active');
+  window.scrollTo(0,0);
+});
+</script>
+</body>
+</html>
