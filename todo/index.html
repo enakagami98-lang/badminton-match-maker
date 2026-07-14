@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="やること">
+<meta name="theme-color" content="#2b3a55">
+<title>あしたのやること</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root {
+    --navy: #2b3a55;
+    --navy-light: #46597e;
+    --accent: #f4a817;
+    --text: #1a1a2e;
+    --text-sub: #777;
+    --bg: #f6f7fb;
+    --card: #ffffff;
+    --line: #e8eaf1;
+    --radius: 16px;
+    --shadow: 0 2px 12px rgba(0,0,0,0.06);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+    background: var(--bg); color: var(--text);
+    min-height: 100dvh;
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+
+  .view { display: none; padding: 24px 20px 12px; max-width: 480px; margin: 0 auto; }
+  .view.active { display: block; }
+
+  .view-title { font-size: 22px; font-weight: 800; color: var(--navy); }
+  .view-date { font-size: 13px; color: var(--text-sub); margin-top: 4px; margin-bottom: 20px; }
+
+  /* ===== notification banner ===== */
+  #perm-banner {
+    display: none;
+    background: #fff7e6; border: 1px solid #f2d9a4; border-radius: var(--radius);
+    padding: 12px 14px; font-size: 13px; color: #7a5b12; margin-bottom: 16px;
+    cursor: pointer;
+  }
+  #perm-banner b { display: block; margin-bottom: 2px; }
+
+  /* ===== todo list ===== */
+  .todo-list { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+  .todo-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px; border-bottom: 1px solid var(--line);
+  }
+  .todo-item:last-child { border-bottom: none; }
+  .todo-check {
+    width: 24px; height: 24px; flex-shrink: 0;
+    border: 2px solid #c6cbda; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; color: #fff; cursor: pointer;
+  }
+  .todo-item.done .todo-check { background: var(--navy-light); border-color: var(--navy-light); }
+  .todo-text { flex: 1; font-size: 16px; word-break: break-word; }
+  .todo-item.done .todo-text { color: var(--text-sub); text-decoration: line-through; }
+  .todo-del {
+    border: none; background: none; color: #c6cbda; font-size: 18px;
+    padding: 4px 6px; cursor: pointer;
+  }
+  .empty { padding: 28px 16px; text-align: center; color: var(--text-sub); font-size: 14px; }
+
+  .add-row { display: flex; gap: 8px; margin-top: 14px; }
+  .add-row input {
+    flex: 1; font-size: 16px; padding: 13px 14px;
+    border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--card); outline: none;
+  }
+  .add-row input:focus { border-color: var(--navy-light); }
+  .add-row button {
+    width: 50px; border: none; border-radius: var(--radius);
+    background: var(--navy); color: #fff; font-size: 24px; cursor: pointer;
+  }
+  .add-row button:active { background: var(--navy-light); }
+
+  .hint { font-size: 12px; color: var(--text-sub); margin-top: 14px; line-height: 1.7; }
+
+  /* ===== settings ===== */
+  .setting-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 16px; }
+  .setting-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px; border-bottom: 1px solid var(--line);
+  }
+  .setting-row:last-child { border-bottom: none; }
+  .setting-label { font-size: 15px; }
+  .setting-label small { display: block; font-size: 12px; color: var(--text-sub); margin-top: 2px; }
+  .setting-row input[type="time"] {
+    font-size: 18px; font-weight: 700; color: var(--navy);
+    border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px;
+    background: var(--bg); outline: none;
+  }
+  #perm-status { font-size: 13px; color: var(--text-sub); }
+  .btn-sub {
+    border: 1px solid var(--line); background: var(--bg); color: var(--navy);
+    font-size: 13px; font-weight: 600; padding: 8px 14px; border-radius: 10px; cursor: pointer;
+  }
+  .btn-main {
+    border: none; background: var(--navy); color: #fff;
+    font-size: 13px; font-weight: 600; padding: 9px 14px; border-radius: 10px; cursor: pointer;
+  }
+
+  /* ===== tab bar ===== */
+  #tabbar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    display: flex; background: var(--card); border-top: 1px solid var(--line);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  #tabbar button {
+    flex: 1; border: none; background: none; padding: 8px 0 6px;
+    font-size: 11px; color: var(--text-sub); cursor: pointer;
+    font-family: inherit;
+  }
+  #tabbar button .ico { display: block; font-size: 20px; margin-bottom: 1px; }
+  #tabbar button.active { color: var(--navy); font-weight: 700; }
+</style>
+</head>
+<body>
+
+<main>
+  <!-- 今日 -->
+  <section class="view" id="view-today">
+    <h1 class="view-title">☀️ 今日やること</h1>
+    <p class="view-date" id="today-date"></p>
+    <div id="perm-banner"><b>通知がオフです</b>タップして通知を有効にすると、夜と朝にお知らせします</div>
+    <div class="todo-list" id="today-list"></div>
+    <div class="add-row">
+      <input type="text" id="today-input" placeholder="やることを追加" enterkeyhint="done">
+      <button id="today-add">＋</button>
+    </div>
+  </section>
+
+  <!-- 明日 -->
+  <section class="view" id="view-tomorrow">
+    <h1 class="view-title">🌙 明日の準備</h1>
+    <p class="view-date" id="tomorrow-date"></p>
+    <div class="todo-list" id="tomorrow-list"></div>
+    <div class="add-row">
+      <input type="text" id="tomorrow-input" placeholder="明日やることを追加" enterkeyhint="done">
+      <button id="tomorrow-add">＋</button>
+    </div>
+    <p class="hint" id="tomorrow-hint"></p>
+  </section>
+
+  <!-- 設定 -->
+  <section class="view" id="view-settings">
+    <h1 class="view-title">設定</h1>
+    <p class="view-date">通知の時間を決めてください</p>
+    <div class="setting-card">
+      <div class="setting-row">
+        <div class="setting-label">🌙 夜の通知<small>明日のリストを作る時間</small></div>
+        <input type="time" id="night-time">
+      </div>
+      <div class="setting-row">
+        <div class="setting-label">☀️ 朝の通知<small>今日のリストを見る時間</small></div>
+        <input type="time" id="morning-time">
+      </div>
+    </div>
+    <div class="setting-card">
+      <div class="setting-row">
+        <div class="setting-label">通知<small id="perm-status"></small></div>
+        <button class="btn-main" id="perm-btn">通知を有効にする</button>
+      </div>
+      <div class="setting-row">
+        <div class="setting-label">テスト通知<small>通知が届くか確認できます</small></div>
+        <button class="btn-sub" id="test-btn">送信</button>
+      </div>
+    </div>
+    <p class="hint">
+      ・スマホのホーム画面にこのアプリを追加すると、通知が届きやすくなります。<br>
+      ・ブラウザやアプリを完全に終了していると、通知が遅れたり届かないことがあります。
+    </p>
+  </section>
+</main>
+
+<nav id="tabbar">
+  <button data-view="today"><span class="ico">☀️</span>今日</button>
+  <button data-view="tomorrow"><span class="ico">🌙</span>明日</button>
+  <button data-view="settings"><span class="ico">⚙️</span>設定</button>
+</nav>
+
+<script>
+// ===== IndexedDB (service worker と共有) =====
+function idb() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open('daily-todo', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+async function kvGet(key) {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const r = db.transaction('kv').objectStore('kv').get(key);
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function kvSet(key, val) {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const r = db.transaction('kv', 'readwrite').objectStore('kv').put(val, key);
+    r.onsuccess = () => res();
+    r.onerror = () => rej(r.error);
+  });
+}
+
+// ===== 日付 =====
+// 深夜3時までは「前日」として扱う（夜ふかし中に日付が変わっても「明日」がずれないように）
+function dayKey(offsetDays = 0) {
+  const d = new Date(Date.now() - 3 * 3600 * 1000 + offsetDays * 86400000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function fmtDate(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  const w = ['日', '月', '火', '水', '木', '金', '土'][new Date(y, m - 1, d).getDay()];
+  return `${m}月${d}日（${w}）`;
+}
+function hmNow() {
+  const n = new Date();
+  return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
+}
+
+// ===== 状態 =====
+let settings = { night: '21:00', morning: '07:00' };
+let lists = {};
+
+async function load() {
+  settings = (await kvGet('settings')) || settings;
+  lists = (await kvGet('lists')) || {};
+  // 初回起動時：すでに過ぎている時刻の通知が即座に鳴らないように
+  if ((await kvGet('notified')) === undefined) await markPastAsNotified();
+  // 過ぎた日のリストは消す
+  const today = dayKey();
+  let changed = false;
+  for (const k of Object.keys(lists)) {
+    if (k < today) { delete lists[k]; changed = true; }
+  }
+  if (changed) await kvSet('lists', lists);
+}
+
+// ===== 描画 =====
+function renderList(dateKey, listEl, emptyText) {
+  const items = lists[dateKey] || [];
+  listEl.innerHTML = '';
+  if (items.length === 0) {
+    listEl.innerHTML = `<div class="empty">${emptyText}</div>`;
+    return;
+  }
+  items.forEach((item, i) => {
+    const row = document.createElement('div');
+    row.className = 'todo-item' + (item.done ? ' done' : '');
+    row.innerHTML = `
+      <div class="todo-check">${item.done ? '✓' : ''}</div>
+      <div class="todo-text"></div>
+      <button class="todo-del">✕</button>`;
+    row.querySelector('.todo-text').textContent = item.text;
+    row.querySelector('.todo-check').onclick = async () => {
+      item.done = !item.done;
+      await kvSet('lists', lists);
+      render();
+    };
+    row.querySelector('.todo-del').onclick = async () => {
+      items.splice(i, 1);
+      await kvSet('lists', lists);
+      render();
+    };
+    listEl.appendChild(row);
+  });
+}
+
+function render() {
+  const today = dayKey(), tomorrow = dayKey(1);
+  document.getElementById('today-date').textContent = fmtDate(today);
+  document.getElementById('tomorrow-date').textContent = fmtDate(tomorrow);
+  document.getElementById('tomorrow-hint').textContent =
+    `このリストは 明日の朝 ${settings.morning} に通知でお知らせします。`;
+  renderList(today, document.getElementById('today-list'), '今日のリストはありません');
+  renderList(tomorrow, document.getElementById('tomorrow-list'), `夜 ${settings.night} の通知から作れます。今すぐ追加してもOK`);
+  document.getElementById('night-time').value = settings.night;
+  document.getElementById('morning-time').value = settings.morning;
+  renderPermission();
+}
+
+function renderPermission() {
+  const status = document.getElementById('perm-status');
+  const btn = document.getElementById('perm-btn');
+  const banner = document.getElementById('perm-banner');
+  if (!('Notification' in window)) {
+    status.textContent = 'このブラウザは通知に対応していません';
+    btn.style.display = 'none';
+    return;
+  }
+  if (Notification.permission === 'granted') {
+    status.textContent = 'オン';
+    btn.style.display = 'none';
+    banner.style.display = 'none';
+  } else if (Notification.permission === 'denied') {
+    status.textContent = 'ブロック中（ブラウザの設定から許可してください）';
+    btn.style.display = 'none';
+    banner.style.display = 'block';
+  } else {
+    status.textContent = 'オフ';
+    btn.style.display = '';
+    banner.style.display = 'block';
+  }
+}
+
+// ===== タブ =====
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
+  document.querySelectorAll('#tabbar button').forEach(b => b.classList.toggle('active', b.dataset.view === name));
+}
+document.querySelectorAll('#tabbar button').forEach(b => b.onclick = () => showView(b.dataset.view));
+
+// ===== 追加 =====
+function setupAdd(inputId, btnId, offsetDays) {
+  const input = document.getElementById(inputId);
+  const add = async () => {
+    const text = input.value.trim();
+    if (!text) return;
+    const key = dayKey(offsetDays);
+    (lists[key] = lists[key] || []).push({ text, done: false });
+    input.value = '';
+    await kvSet('lists', lists);
+    render();
+    input.focus();
+  };
+  document.getElementById(btnId).onclick = add;
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
+}
+setupAdd('today-input', 'today-add', 0);
+setupAdd('tomorrow-input', 'tomorrow-add', 1);
+
+// ===== 設定変更 =====
+async function saveSettings() {
+  settings.night = document.getElementById('night-time').value || '21:00';
+  settings.morning = document.getElementById('morning-time').value || '07:00';
+  await kvSet('settings', settings);
+  // すでに過ぎた時間に変更したら、今日は鳴らさない（明日から）
+  await markPastAsNotified();
+  render();
+}
+document.getElementById('night-time').onchange = saveSettings;
+document.getElementById('morning-time').onchange = saveSettings;
+
+async function markPastAsNotified() {
+  const notified = (await kvGet('notified')) || {};
+  const today = dayKey(), now = hmNow();
+  if (settings.night <= now) notified.night = today;
+  if (settings.morning <= now) notified.morning = today;
+  await kvSet('notified', notified);
+}
+
+// ===== 通知 =====
+document.getElementById('perm-btn').onclick = requestPermission;
+document.getElementById('perm-banner').onclick = () => {
+  if (Notification.permission === 'default') requestPermission();
+  else showView('settings');
+};
+
+async function requestPermission() {
+  const result = await Notification.requestPermission();
+  if (result === 'granted') {
+    await markPastAsNotified(); // 有効化した瞬間に過去分が鳴らないように
+    await registerPeriodicSync();
+  }
+  renderPermission();
+}
+
+async function registerPeriodicSync() {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    if ('periodicSync' in reg) {
+      await reg.periodicSync.register('todo-check', { minInterval: 60 * 60 * 1000 });
+    }
+  } catch (e) { /* 非対応なら無視 */ }
+}
+
+document.getElementById('test-btn').onclick = async () => {
+  if (Notification.permission !== 'granted') { await requestPermission(); }
+  if (Notification.permission !== 'granted') return;
+  const reg = await navigator.serviceWorker.ready;
+  reg.showNotification('テスト通知', {
+    body: '通知はこのように届きます',
+    icon: './icon-192.png',
+    badge: './icon-192.png'
+  });
+};
+
+// service worker に時間チェックを依頼（開いている間は30秒ごと）
+async function sendCheck() {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    reg.active && reg.active.postMessage('check');
+  } catch (e) {}
+}
+setInterval(sendCheck, 30 * 1000);
+document.addEventListener('visibilitychange', async () => {
+  if (!document.hidden) { await load(); render(); sendCheck(); }
+});
+
+// ===== 起動 =====
+(async () => {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js');
+  }
+  await load();
+  render();
+
+  // 通知タップで開いたときの画面切り替え（?view=tomorrow / today）
+  const view = new URLSearchParams(location.search).get('view');
+  showView(view === 'tomorrow' || view === 'settings' ? view : 'today');
+
+  if (Notification.permission === 'granted') registerPeriodicSync();
+  sendCheck();
+})();
+</script>
+</body>
+</html>
