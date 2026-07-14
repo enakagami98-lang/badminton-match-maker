@@ -170,6 +170,9 @@
         <button class="btn-main" id="perm-btn">通知を有効にする</button>
       </div>
       <div class="setting-row">
+        <div class="setting-label">時間ぴったり通知<small id="push-status"></small></div>
+      </div>
+      <div class="setting-row">
         <div class="setting-label">テスト通知<small>通知が届くか確認できます</small></div>
         <button class="btn-sub" id="test-btn">送信</button>
       </div>
@@ -188,6 +191,11 @@
 </nav>
 
 <script>
+// ===== サーバー通知（Web Push）の設定 =====
+const SUPABASE_URL = 'https://cihuqwuobvxwcaualnqm.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpaHVxd3VvYnZ4d2NhdWFsbnFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNDgxMDksImV4cCI6MjA5OTYyNDEwOX0._6azXkdBZBOlTgJjoY883owzERciIwLNiCnKKRlaNoU';
+const VAPID_PUBLIC_KEY = 'BO-4D_QEtm_L1X15NbV_CMu7S2S_JfotEtTJaC78HD9t52O9G_SMjtKHY-5blrcPO36GJ4mVgcTjHiIe64Y_bTY';
+
 // ===== IndexedDB (service worker と共有) =====
 function idb() {
   return new Promise((res, rej) => {
@@ -295,6 +303,13 @@ function renderPermission() {
   const status = document.getElementById('perm-status');
   const btn = document.getElementById('perm-btn');
   const banner = document.getElementById('perm-banner');
+  const pushStatus = document.getElementById('push-status');
+  pushStatus.textContent = {
+    on: 'オン（アプリを閉じていても届きます）',
+    error: '接続エラー（次にアプリを開いたとき再試行します）',
+    unsupported: 'この環境では利用できません',
+    off: '通知を有効にすると自動で設定されます'
+  }[pushState];
   if (!('Notification' in window)) {
     status.textContent = 'このブラウザは通知に対応していません';
     btn.style.display = 'none';
@@ -348,6 +363,7 @@ async function saveSettings() {
   await kvSet('settings', settings);
   // すでに過ぎた時間に変更したら、今日は鳴らさない（明日から）
   await markPastAsNotified();
+  await syncPush(); // サーバー側の通知時刻も更新
   render();
 }
 document.getElementById('night-time').onchange = saveSettings;
@@ -373,6 +389,59 @@ async function requestPermission() {
   if (result === 'granted') {
     await markPastAsNotified(); // 有効化した瞬間に過去分が鳴らないように
     await registerPeriodicSync();
+    await syncPush();
+  }
+  renderPermission();
+}
+
+// ===== サーバー通知（Web Push）：閉じていても時間ぴったりに届く =====
+let pushState = 'off'; // off | on | error | unsupported
+
+function urlBase64ToUint8Array(base64) {
+  const padding = '='.repeat((4 - (base64.length % 4)) % 4);
+  const raw = atob((base64 + padding).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+// 次にその時刻が来る日時（過ぎていたら明日）
+function nextOccurrence(hm) {
+  const [h, m] = hm.split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  if (d <= new Date()) d.setDate(d.getDate() + 1);
+  return d;
+}
+
+async function syncPush() {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (!('PushManager' in window)) { pushState = 'unsupported'; renderPermission(); return; }
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+    });
+    const j = sub.toJSON();
+    const res = await fetch(SUPABASE_URL + '/rest/v1/push_subscriptions?on_conflict=endpoint', {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates,return=minimal'
+      },
+      body: JSON.stringify({
+        endpoint: sub.endpoint,
+        p256dh: j.keys.p256dh,
+        auth: j.keys.auth,
+        next_night_at: nextOccurrence(settings.night).toISOString(),
+        next_morning_at: nextOccurrence(settings.morning).toISOString(),
+        updated_at: new Date().toISOString()
+      })
+    });
+    pushState = res.ok ? 'on' : 'error';
+  } catch (e) {
+    pushState = 'error';
   }
   renderPermission();
 }
@@ -407,7 +476,7 @@ async function sendCheck() {
 }
 setInterval(sendCheck, 30 * 1000);
 document.addEventListener('visibilitychange', async () => {
-  if (!document.hidden) { await load(); render(); sendCheck(); }
+  if (!document.hidden) { await load(); render(); sendCheck(); syncPush(); }
 });
 
 // ===== 起動 =====
@@ -424,6 +493,7 @@ document.addEventListener('visibilitychange', async () => {
 
   if (Notification.permission === 'granted') registerPeriodicSync();
   sendCheck();
+  syncPush();
 })();
 </script>
 </body>
