@@ -220,6 +220,11 @@
     font-size: 15px; font-weight: 800; color: var(--green-dark);
   }
   .rest-empty { font-size: 13px; color: var(--text-sub); }
+  .rest-notice {
+    margin-top: 8px; padding: 8px 10px; border-radius: 8px;
+    background: rgba(255, 176, 32, 0.12); border: 1px solid rgba(255, 176, 32, 0.35);
+    font-size: 11px; line-height: 1.5; color: var(--text);
+  }
 
   /* Ranking section */
   .ranking-section {
@@ -603,20 +608,8 @@ function generateNextMatch() {
   const playing = maxCourts * 4;
   const restCount = active.length - playing;
 
-  // Decide who rests
-  let rest = [];
-  if (restCount > 0) {
-    // 1コート・8人以上 → 直前に出た人を強制休みにする厳格モード
-    if (maxCourts === 1 && active.length >= 8) {
-      rest = selectRestOneCourt(active, restCount);
-    } else {
-      // 複数コート → 従来ロジック（連続休みを避ける）
-      const lastRest = state.restHistory.length > 0 ? state.restHistory[state.restHistory.length - 1] : [];
-      const notLastRest = active.filter(p => !lastRest.includes(p));
-      const candidates = notLastRest.length >= restCount ? notLastRest : active;
-      rest = shuffle([...candidates]).slice(0, restCount);
-    }
-  }
+  // Decide who rests（連続出場が長い人から順に休ませる）
+  const rest = selectRestPlayers(active, restCount);
   state.restHistory.push(rest);
 
   const playingPlayers = active.filter(p => !rest.includes(p));
@@ -697,56 +690,84 @@ function getOpponentScore(back, front) {
   return score;
 }
 
-// ===== 1コート厳格休み選択 =====
-// 直前に出た人を強制休みにし、連続出場を防ぐ
-function selectRestOneCourt(active, restCount) {
-  if (state.matches.length === 0) {
-    // 初戦: 休み履歴なし → シャッフルで選ぶ
-    return shuffle([...active]).slice(0, restCount);
-  }
+// ===== 休む人の選出 =====
+// ルールは2つだけ。どちらも「連続出場数の多い人から順に休ませる」だけで自動的に満たされる。
+//   ルールA: 2試合続けて休まない
+//     → 直前に休んだ人は連続出場0なので優先度が最下位になり、自動的に選ばれない
+//   ルールB: MAX_CONSECUTIVE_PLAY 試合を超えて連続出場しない
+//     → 連続出場が最大の人が最優先で休みになるので、上限を超える前に必ず休みが入る
+//
+// 【成立条件】休みの人数をR、参加人数をNとすると
+//   ルールA … R <= N/2（休みが多すぎると2連続休みは避けられない）
+//   ルールB … R >= N/4（休みが少なすぎると4連続出場する人が必ず出る）
+// 例）11人2コート → 稼働8人・休み3人。N/4 = 2.75 <= 3 <= 5.5 なので両立可能。
+// 条件を外れる人数のときは restRuleNotice() が画面に注意書きを出す。
+const MAX_CONSECUTIVE_PLAY = 3; // 連続出場の上限（これを超えたら必ず休み）
 
-  const lastMatch = state.matches[state.matches.length - 1];
-  // 直前の試合に出た全プレイヤー
-  const lastPlayed = [...new Set(lastMatch.courts.flatMap(c => [...c.back, ...c.front]))]
-    .filter(p => active.includes(p));
-  const canPlay = active.filter(p => !lastPlayed.includes(p));
-
-  if (canPlay.length >= 4) {
-    // ===== 厳格モード: lastPlayedは全員休み =====
-    const extraNeeded = restCount - lastPlayed.length;
-    let extra = [];
-    if (extraNeeded > 0) {
-      // canPlayの中から追加で休む人を選ぶ（前回休んだ人は除外優先）
-      const lastRested = state.restHistory.length > 0 ? state.restHistory[state.restHistory.length - 1] : [];
-      const notRestedLast = canPlay.filter(p => !lastRested.includes(p));
-      const restedLast    = canPlay.filter(p =>  lastRested.includes(p));
-      if (notRestedLast.length >= extraNeeded) {
-        extra = shuffle([...notRestedLast]).slice(0, extraNeeded);
-      } else {
-        extra = [...notRestedLast, ...shuffle([...restedLast]).slice(0, extraNeeded - notRestedLast.length)];
-      }
-    } else if (extraNeeded < 0) {
-      // lastPlayedが多すぎる（複数コートから1コートへの移行時など）
-      // 最近出た順に多く休ませる
-      const sorted = [...lastPlayed].sort((a, b) =>
-        (state.lastPlayedMatchIndex[b] ?? -1) - (state.lastPlayedMatchIndex[a] ?? -1)
-      );
-      return sorted.slice(0, restCount);
-    }
-    return [...lastPlayed, ...extra];
-  } else {
-    // ===== フォールバック: 人が足りず完全回避不可 =====
-    // canPlay全員を出場させ、lastPlayedから「最も長く休んでいた人」を優先して出場
-    const forcedPlay = 4 - canPlay.length;
-    const sortedLastPlayed = [...lastPlayed].sort((a, b) =>
-      (state.lastPlayedMatchIndex[a] ?? -1) - (state.lastPlayedMatchIndex[b] ?? -1) // 長く休んだ順
+// その人が直近何試合連続で出場しているか
+function getPlayStreak(playerId) {
+  let streak = 0;
+  for (let i = state.matches.length - 1; i >= 0; i--) {
+    const played = state.matches[i].courts.some(
+      c => c.back.includes(playerId) || c.front.includes(playerId)
     );
-    const forcedToPlay = sortedLastPlayed.slice(0, forcedPlay);
-    const mustRest     = sortedLastPlayed.slice(forcedPlay);
-    const needFromCanPlay = restCount - mustRest.length;
-    const extraRest = needFromCanPlay > 0 ? shuffle([...canPlay]).slice(0, needFromCanPlay) : [];
-    return [...mustRest, ...extraRest];
+    if (!played) break;
+    streak++;
   }
+  return streak;
+}
+
+// その人がこれまで何回休んだか（同じ連続出場数のときの公平さ調整に使う）
+function getTotalRestCount(playerId) {
+  let count = 0;
+  for (const m of state.matches) {
+    if (m.rest && m.rest.includes(playerId)) count++;
+  }
+  return count;
+}
+
+function selectRestPlayers(active, restCount) {
+  if (restCount <= 0) return [];
+
+  const streak = {};
+  const rested = {};
+  active.forEach(p => { streak[p] = getPlayStreak(p); rested[p] = getTotalRestCount(p); });
+
+  // 連続出場数ごとにグループ分けし、多い順に休ませていく
+  const groups = {};
+  active.forEach(p => { (groups[streak[p]] = groups[streak[p]] || []).push(p); });
+  const levels = Object.keys(groups).map(Number).sort((a, b) => b - a);
+
+  const rest = [];
+  for (const lv of levels) {
+    if (rest.length >= restCount) break;
+    // 同じ連続出場数の中では「これまで休んだ回数が少ない人」を優先。さらに同数ならランダム
+    const g = shuffle([...groups[lv]]).sort((a, b) => rested[a] - rested[b]);
+    for (const p of g) {
+      if (rest.length >= restCount) break;
+      rest.push(p);
+    }
+  }
+  return rest;
+}
+
+// 今の人数・コート数でルールを守り切れるかの判定（守れないときだけ文言を返す）
+function restRuleNotice() {
+  const active = getActivePlayers();
+  const maxCourts = Math.min(state.courts, Math.floor(active.length / 4));
+  const playing = maxCourts * 4;
+  const restCount = active.length - playing;
+  if (restCount <= 0) {
+    return `⚠️ 全員が毎試合出場するため、連続出場の上限は適用できません`;
+  }
+  if (restCount > playing) {
+    return `⚠️ 休みが多すぎるため、2試合続けて休む人が出ます（コートを増やすと解消します）`;
+  }
+  if (restCount * (MAX_CONSECUTIVE_PLAY + 1) < active.length) {
+    const need = Math.ceil(playing * (MAX_CONSECUTIVE_PLAY + 1) / MAX_CONSECUTIVE_PLAY);
+    return `⚠️ この人数では${MAX_CONSECUTIVE_PLAY}連続出場を超える人が出ます（${playing}人稼働なら${need}人以上必要）`;
+  }
+  return '';
 }
 
 // ペア・対戦相手の履歴を記録
@@ -867,19 +888,22 @@ function renderMatch() {
 
   // Rest
   const restEl = document.getElementById('rest-section');
+  const notice = isLatest ? restRuleNotice() : '';
   if (match.rest.length > 0) {
     restEl.style.display = 'block';
     restEl.innerHTML = `
       <div class="rest-header">
         <div class="rest-title">☕ 今回の休み（${match.rest.length}名）</div>
-        <div class="rest-hint">🔄 休む人は毎回変わるように自動調整されます</div>
+        <div class="rest-hint">🔄 2連続の休みなし／最大${MAX_CONSECUTIVE_PLAY}連続出場まで</div>
       </div>
       <div class="rest-players">
         ${match.rest.map(p => `<div class="rest-player">${p}</div>`).join('')}
       </div>
+      ${notice ? `<div class="rest-notice">${notice}</div>` : ''}
     `;
   } else {
-    restEl.style.display = 'none';
+    restEl.style.display = notice ? 'block' : 'none';
+    restEl.innerHTML = notice ? `<div class="rest-notice">${notice}</div>` : '';
   }
 
   // Ranking
@@ -1068,11 +1092,21 @@ function applyAdjust() {
   closeModal('modal-adjust');
 
   // Generate new match with updated players
-  recordPairs(state.matches[state.matchIndex].courts);
+  const current = state.matches[state.matchIndex];
+  const hasResult = current && current.results.some(r => r !== null);
+  if (hasResult) {
+    // 結果入力済み → 成立した試合として履歴に残し、次の試合を組む
+    recordMatchHistory(current.courts);
+  } else {
+    // まだ結果なし → 今の試合を作り直す（連続出場のカウントを狂わせないため）
+    state.matches.pop();
+    state.matchIndex = state.matches.length - 1;
+    state.restHistory.pop();
+  }
   generateNextMatch();
   save();
   renderMatch();
-  showToast('人数を更新して次の試合を組みました');
+  showToast(hasResult ? '人数を更新して次の試合を組みました' : '人数を更新して試合を組み直しました');
 }
 
 // ===== HISTORY =====
