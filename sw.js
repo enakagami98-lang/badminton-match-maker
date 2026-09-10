@@ -1,5 +1,5 @@
-const CACHE = 'bm-v1';
-const FILES = ['./index.html', './manifest.json'];
+const CACHE = 'bm-v2';
+const FILES = ['./index.html', './styles.css', './app.js', './manifest.json'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)));
