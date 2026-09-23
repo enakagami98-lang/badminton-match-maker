@@ -1,4 +1,4 @@
-const CACHE = 'bm-v1';
+const CACHE = 'bm-v3';
 const FILES = ['./index.html', './manifest.json'];
 
 self.addEventListener('install', e => {

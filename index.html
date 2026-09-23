@@ -121,6 +121,17 @@
     white-space: nowrap;
   }
 
+  /* 狭い画面ではロゴの文字を隠してヘッダーを収める
+     （これがないと「終了」ボタンが画面の右外に出て押せなくなる） */
+  .match-header > * { min-width: 0; }
+  @media (max-width: 460px) {
+    .match-header { padding: 10px 10px 8px; gap: 6px; }
+    .header-logo .logo-text, .header-logo .logo-sub { display: none; }
+    .header-center { gap: 4px; }
+    .match-title { font-size: 15px; }
+    .btn-adjust, .btn-end { padding: 7px 8px; font-size: 11px; gap: 3px; }
+  }
+
   .match-stats {
     margin: 12px 16px 0;
     background: #fff; border-radius: var(--radius);
@@ -520,6 +531,16 @@
     </div>
     <button class="modal-apply" onclick="applyAdjust()">✅ この設定で次の試合を組む</button>
     <button class="modal-close" onclick="closeModal('modal-adjust')">キャンセル</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-confirm">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="confirm-title"></div>
+    <div class="modal-subtitle" id="confirm-message"></div>
+    <button class="modal-apply" id="confirm-ok"></button>
+    <button class="modal-close" onclick="closeModal('modal-confirm')">キャンセル</button>
   </div>
 </div>
 
@@ -1025,9 +1046,22 @@ function navigateMatch(delta) {
   renderMatch();
 }
 
+// ブラウザ標準の confirm() は、Webページとして公開したとき（サンドボックス内）に
+// ダイアログが出ずに必ず false を返す＝ボタンを押しても何も起きない。
+// そのため自前の確認ダイアログを使う。
+function askConfirm(title, message, okLabel, onOk) {
+  document.getElementById('confirm-title').textContent = title;
+  document.getElementById('confirm-message').textContent = message;
+  const ok = document.getElementById('confirm-ok');
+  ok.textContent = okLabel;
+  ok.onclick = () => { closeModal('modal-confirm'); onOk(); };
+  openModal('modal-confirm');
+}
+
 function endGame() {
-  if (!confirm('試合を終了して最終結果を表示しますか？')) return;
-  showFinal();
+  askConfirm('⏻ 試合を終了', '最終結果を表示します。よろしいですか？', '✅ 終了して結果を見る', () => {
+    showFinal();
+  });
 }
 
 // ===== ADJUST =====
@@ -1205,9 +1239,10 @@ function showFinal() {
 }
 
 function restartGame() {
-  if (!confirm('データを消去して最初からやり直しますか？')) return;
-  localStorage.removeItem('bm_state');
-  showScreen('setup');
+  askConfirm('🔄 最初からやり直す', 'これまでの試合結果はすべて消えます。よろしいですか？', '🗑 消してやり直す', () => {
+    try { localStorage.removeItem('bm_state'); } catch (e) {}
+    showScreen('setup');
+  });
 }
 
 // ===== UTILS =====
